@@ -18,8 +18,8 @@ class Environment():
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.config = read_yaml(args.config)
         self.dataset = Stocks(self.config)
-        self.money = self.config['money']
-        self.start_money = self.money
+        self.start_money = self.config['money']
+        
         self.action_space = self.config['action_space']
         self.update = self.config['update_every']
         self.channels = self.config['channels']
@@ -34,7 +34,7 @@ class Environment():
         self.min_len = self.config['min_len']
         self.memory = deque(maxlen=self.config['max_len'])
         self.ep_min = self.config['ep_min']
-        self.stocks = 0 
+        
         self.writer = SummaryWriter(log_dir='logdir')
         self.discount = self.config['discount']
 
@@ -46,7 +46,8 @@ class Environment():
         
         for i in tqdm(range(self.episodes)):
             
-            money = self.money
+            self.money = self.start_money
+            self.stocks = 0
             index = random.randint(0,len(self.dataset)-self.channels)
             done = False
             
@@ -68,10 +69,10 @@ class Environment():
                 reward,resell = self.get_reward(action,_open,close,sell)
                 rewards += reward
                 
-                if self.money <= 0:
+                if self.money <= 0 or index >= len(self.dataset) -1 -self.channels:
                     done = True
 
-                new_state,_open,close = self.dataset[index]
+                new_state,_open,close = self.dataset[index+1]
                 
 
                 self.memory.append((state,action,reward,new_state,torch.tensor(resell).view(1,),done))
@@ -85,7 +86,7 @@ class Environment():
                 
 
             
-            print('\n',self.stocks, self.money-money)
+            print('\n',self.stocks, rewards)
             self.writer.add_scalar("Money",self.money,i)
             self.writer.add_scalar("Stocks",self.stocks,i)
             self.writer.add_scalar("reward",rewards,i)
@@ -99,20 +100,29 @@ class Environment():
         delta = self.stocks*(price - value)
 
         if action == 0:
-            self.money += (np.round(sell*(self.stocks)))*price
             delta = self.stocks*(value - price)
+            '''
+            self.money += self.stocks*price
+            self.stocks = 0
+            '''
+            self.money += (np.round(sell*(self.stocks)))*price
             
             
-            self.stocks -= np.round(sell*(self.stocks))
-
+            
+            self.stocks -= int(np.round(sell*(self.stocks)))
+            
         if action == 1:
+            '''
+            self.money -= price
+            self.stocks += 1
+            '''
             if self.stocks  == 0:
                 stocks = 1
             else:
                 stocks= self.stocks
 
             self.money -= np.round(sell*(stocks))*price
-            self.stocks += np.round(sell*(stocks))
+            self.stocks += int(np.round(sell*(stocks)))
             
         
         if delta < 0:

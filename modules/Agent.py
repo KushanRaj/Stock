@@ -39,9 +39,17 @@ class Model(nn.Module):
         super(Model,self).__init__()
         self.conv   = loop_conv(5,[channels,32,64,128,128,128],[1,1,2,2,2])
         self.img_size = img_size//8 + 1
-        self.dns1 = nn.Linear(128*self.img_size*self.img_size,512)  
+        self.dns1 =  nn.Sequential(
+                                    nn.Linear(128*self.img_size*self.img_size,512),
+                                    Mish(),
+                                    nn.BatchNorm1d(512)
+                                    ) 
         self.dns2 = nn.Linear(512,action_space)
-        self.dns3 = nn.Linear(512,10)
+        self.dns3 = nn.Sequential(
+                                    nn.Linear(512,10),
+                                    Mish(),
+                                    nn.BatchNorm1d(10)
+                                    )
         self.dns4 = nn.Linear(10,1)    
 
     def forward(self,x):
@@ -50,6 +58,7 @@ class Model(nn.Module):
         x = x.view(-1,128*self.img_size*self.img_size)
         x = self.dns1(x) 
         q = self.dns2(x)
+        
         n = self.dns3(x)
         n = torch.sigmoid(self.dns4(n))
             
@@ -74,7 +83,7 @@ class StockAgent():
         self.loss = nn.MSELoss()
         self.loss2 = nn.BCELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr)
-        
+        self.model.train(mode=False)
    
     def train_step(self,X,y1,y2):
     
@@ -88,10 +97,12 @@ class StockAgent():
 
         
 
-        loss1.backward()
+        
         
         self.optimizer.zero_grad()
+        loss1.backward()
         self.optimizer.step()
+        self.model.train(mode=False)
         
         
 
@@ -112,7 +123,7 @@ class StockAgent():
         y2 = []
 
         
-        for index, (current_state, action, reward, new_current_state,sell, done) in enumerate(minibatch):
+        for index, (current_state, action, reward, new_current_state, sell,done) in enumerate(minibatch):
 
             
             if not done:
@@ -136,4 +147,4 @@ class StockAgent():
         if update:
 
             self.target_model.load_state_dict(self.model.state_dict())
-            torch.save(self.model.state_dict(), 'E:\Stock\weights\model.pth')
+            torch.save(self.model.state_dict(), '/Stock/weights/model2.pth')
