@@ -8,6 +8,8 @@ import random
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
+
+
 class Environment():
 
     def __init__(self,args):
@@ -24,7 +26,7 @@ class Environment():
         self.img_size = self.dataset.IMG_SIZE
 
         self.agent = StockAgent(self.channels,self.action_space,
-                                self.img_size,32,
+                                self.img_size,self.config['batch_size'],
                                 self.device,self.config['lr'])
 
         self.epsilon = self.config['epsilon']
@@ -33,7 +35,7 @@ class Environment():
         self.memory = deque(maxlen=self.config['max_len'])
         self.ep_min = self.config['ep_min']
         self.stocks = 0 
-        self.writer = SummaryWriter(log_dir='/logdir')
+        self.writer = SummaryWriter(log_dir='logdir')
         self.discount = self.config['discount']
 
 
@@ -45,62 +47,82 @@ class Environment():
         for i in tqdm(range(self.episodes)):
             
             money = self.money
-            index = random.randint(0,len(self.dataset))
+            index = random.randint(0,len(self.dataset)-self.channels)
             done = False
+            
             state,_open,close = self.dataset[index]
+           
+            
             rewards = 0
-            while (not done) and index < len(self.dataset)-1:
-
+            while (not done) and index < len(self.dataset)-1 -self.channels:
+                
                 if np.random.uniform()>self.epsilon:
-                    action = torch.argmax(self.agent.model(state.view(1,self.channels,self.img_size,self.img_size).to(self.device)))
+                    
+                    action,sell = self.agent.model(state.view(1,self.channels,self.img_size,self.img_size).to(self.device))
+                    action = torch.argmax(action)
+                    sell = sell.item()
 
                 else:
-                    action = np.random.randint(3)
-
-                reward = self.get_reward(action,_open,close)
+                    action,sell = np.random.randint(3),np.random.uniform()
+                
+                reward,resell = self.get_reward(action,_open,close,sell)
                 rewards += reward
-
+                
                 if self.money <= 0:
                     done = True
 
                 new_state,_open,close = self.dataset[index]
+                
 
-                self.memory.append((state,action,reward,new_state,done))
-
+                self.memory.append((state,action,reward,new_state,torch.tensor(resell).view(1,),done))
+                
                 if len(self.memory) > self.min_len:
                     update = done & i % self.update == 0
                     self.agent.train(self.memory,update,self.discount)
                 state = new_state
                 index += 1
 
+                
+
             
             print('\n',self.stocks, self.money-money)
-            self.epsilon = max(self.ep_min,self.epsilon*(1-i/self.episodes))
             self.writer.add_scalar("Money",self.money,i)
             self.writer.add_scalar("Stocks",self.stocks,i)
             self.writer.add_scalar("reward",rewards,i)
-            self.writer.add_scalar("net_worth",self.money + close*self.stocks -self.start_money)
+            self.writer.add_scalar("net_worth",self.money + close*self.stocks -self.start_money,i)
+            self.writer.add_scalar("randomnes",self.epsilon,i)
+            self.epsilon = max(self.ep_min,self.epsilon*(1-i/self.episodes))
+            
     
-    def get_reward(self,action,price,value):
+    def get_reward(self,action,price,value,sell):
         
-        
+        delta = self.stocks*(price - value)
+
         if action == 0:
-            self.money += self.stocks*price
+            self.money += (np.round(sell*(self.stocks)))*price
             delta = self.stocks*(value - price)
-            self.stocks = 0
+            
+            
+            self.stocks -= np.round(sell*(self.stocks))
 
         if action == 1:
+            if self.stocks  == 0:
+                stocks = 1
+            else:
+                stocks= self.stocks
 
-            delta = self.stocks*(price - value)
-
+            self.money -= np.round(sell*(stocks))*price
+            self.stocks += np.round(sell*(stocks))
+            
+        
+        if delta < 0:
+            resell = .9999
         else:
+            resell = 0.0001
 
-            self.money -= price
-            self.stocks += 1 
-            delta = self.stocks*(price - value)
-
-
-        return (self.money - self.start_money + self.stocks*value - 10*delta)
+        
+                
+        return (self.money - self.start_money + self.stocks*value - 10*delta),resell
 
 
 

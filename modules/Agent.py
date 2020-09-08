@@ -40,17 +40,21 @@ class Model(nn.Module):
         self.conv   = loop_conv(5,[channels,32,64,128,128,128],[1,1,2,2,2])
         self.img_size = img_size//8 + 1
         self.dns1 = nn.Linear(128*self.img_size*self.img_size,512)  
-        self.dns2 = nn.Linear(512,action_space)  
+        self.dns2 = nn.Linear(512,action_space)
+        self.dns3 = nn.Linear(512,10)
+        self.dns4 = nn.Linear(10,1)    
 
     def forward(self,x):
         
         x = self.conv(x)
         x = x.view(-1,128*self.img_size*self.img_size)
         x = self.dns1(x) 
-        x = self.dns2(x)
+        q = self.dns2(x)
+        n = self.dns3(x)
+        n = torch.sigmoid(self.dns4(n))
             
         
-        return x
+        return q,n
                
 
 
@@ -68,43 +72,47 @@ class StockAgent():
         self.target_model.load_state_dict(self.model.state_dict())
         self.batch = batch_size
         self.loss = nn.MSELoss()
+        self.loss2 = nn.BCELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr)
         
    
-    def train_step(self,X,y):
+    def train_step(self,X,y1,y2):
     
         self.model.train()
         
-        logit = self.model(X.to(self.device))
+        q,n = self.model(X.to(self.device))
 
-        loss = self.loss(y,logit)
+        loss1 = self.loss(q,y1.to(self.device)) + self.loss2(n,y2.to(self.device))
+        
         
 
         
 
-        loss.backward()
+        loss1.backward()
+        
         self.optimizer.zero_grad()
         self.optimizer.step()
         
         
 
     def train(self,memory,update,discount):
-
+        
         minibatch = random.sample(memory, self.batch)
 
         
         current_states = torch.stack([transition[0] for transition in minibatch])
-        current_qs_list = self.model(current_states.to(self.device))
+        current_qs_list,_ = self.model(current_states.to(self.device))
 
         
         new_current_states = torch.stack([transition[3] for transition in minibatch])
-        future_qs_list = self.target_model(new_current_states.to(self.device))
-
+        future_qs_list,_ = self.target_model(new_current_states.to(self.device))
+        
         X = []
-        y = []
+        y1 = []
+        y2 = []
 
         
-        for index, (current_state, action, reward, new_current_state, done) in enumerate(minibatch):
+        for index, (current_state, action, reward, new_current_state,sell, done) in enumerate(minibatch):
 
             
             if not done:
@@ -119,10 +127,13 @@ class StockAgent():
 
             
             X.append(current_state)
-            y.append(current_qs)
-
-        self.train_step(torch.stack(X),torch.stack(y))
+            y1.append(current_qs)
+            y2.append(sell)
+            
+        
+        self.train_step(torch.stack(X),torch.stack(y1),torch.stack(y2))
 
         if update:
 
             self.target_model.load_state_dict(self.model.state_dict())
+            torch.save(self.model.state_dict(), 'E:\Stock\weights\model.pth')
