@@ -1,0 +1,14 @@
+root : "E:/Stock/data/data.csv"
+database : "EOD/AAPL"
+channels : 8
+Batch_size : 64
+episodes : 10_000
+epsilon : 0.9
+discount : 0.99
+ep_min : 0.05
+min_len : 365
+money : 100_000
+action_space : 3
+update_every : 5
+lr : 0.001
+max_len : 1000
