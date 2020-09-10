@@ -36,7 +36,7 @@ class Environment():
         self.maxlen = self.config['max_len']
         self.writer = SummaryWriter(log_dir='logdir')
         self.discount = self.config['discount']
-        self.epoch = [0]
+        self.epoch = 0
         
 
 
@@ -51,7 +51,7 @@ class Environment():
 
 
         epoch = self.epoch
-        for i in tqdm(epoch,range(self.episodes)):
+        for i in tqdm(range(epoch,self.episodes)):
             
             self.money = self.start_money
             self.stocks = 0
@@ -96,7 +96,7 @@ class Environment():
             
             
             
-            self.epoch[0] = i 
+            self.epoch = i 
             print('\n',self.stocks, rewards)
             self.writer.add_scalar("Money",self.money,i)
             self.writer.add_scalar("Stocks",np.mean(stocks),i)
@@ -165,5 +165,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     env = Environment(args)
-    env.re__init("E:/Stock/weights/model2.pth","E:/Stock/epoch/epoch.npy","E:/Stock/epoch/epsilon.npy")
+    #env.re__init("E:/Stock/weights/model2.pth","E:/Stock/epoch/epoch.npy","E:/Stock/epoch/epsilon.npy")
     env.learn()
