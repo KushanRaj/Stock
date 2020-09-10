@@ -6,3 +6,5 @@ utils/__pycache__/common.cpython-38.pyc
 modules/__pycache__/Agent.cpython-38.pyc
 datasets/__pycache__/__init__.cpython-38.pyc
 datasets/__pycache__/StockRL.cpython-38.pyc
+epoch
+weights/model2.pth

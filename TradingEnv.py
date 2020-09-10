@@ -3,7 +3,6 @@ from datasets.StockRL import Stocks
 from modules.Agent import StockAgent
 from tqdm import tqdm
 import numpy as np
-from collections import deque
 import random
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -32,34 +31,42 @@ class Environment():
         self.epsilon = self.config['epsilon']
         self.episodes = self.config['episodes']
         self.min_len = self.config['min_len']
-        self.memory = deque(maxlen=self.config['max_len'])
+        self.memory = [torch.tensor([])] * 6
         self.ep_min = self.config['ep_min']
-        
+        self.maxlen = self.config['max_len']
         self.writer = SummaryWriter(log_dir='logdir')
         self.discount = self.config['discount']
+        self.epoch = [0]
+        
 
 
-
+    def re__init(self,path,epoch_path=None,eps_path=None):
+        self.agent.load_model(path)
+        if epoch_path:
+            self.epoch = np.load(epoch_path,allow_pickle=True)[0]
+            self.epsilon = max(self.ep_min,self.epsilon*(1-(self.epoch)/self.episodes) )
+    
+    
     def learn(self):
 
 
-        
-        for i in tqdm(range(self.episodes)):
+        epoch = self.epoch
+        for i in tqdm(epoch,range(self.episodes)):
             
             self.money = self.start_money
             self.stocks = 0
             index = random.randint(0,len(self.dataset)-self.channels)
-            done = False
+            done = 0
             
             state,_open,close = self.dataset[index]
            
-            
+            stocks = 0
             rewards = 0
             while (not done) and index < len(self.dataset)-1 -self.channels:
                 
                 if np.random.uniform()>self.epsilon:
                     
-                    action,sell = self.agent.model(state.view(1,self.channels,self.img_size,self.img_size).to(self.device))
+                    action,sell = self.agent.model(state.to(self.device))
                     action = torch.argmax(action)
                     sell = sell.item()
 
@@ -70,31 +77,46 @@ class Environment():
                 rewards += reward
                 
                 if self.money <= 0 or index >= len(self.dataset) -1 -self.channels:
-                    done = True
+                    done = 1
 
                 new_state,_open,close = self.dataset[index+1]
                 
 
-                self.memory.append((state,action,reward,new_state,torch.tensor(resell).view(1,),done))
+                self.update_memory((state,torch.tensor([action]),torch.tensor([reward]),new_state,torch.tensor([[resell]]),torch.tensor([done])))
                 
-                if len(self.memory) > self.min_len:
+                if self.memory[0].size(0) > self.min_len:
                     update = done & i % self.update == 0
+                    np.save('/Stock/epoch/epoch.npy',[self.epoch])
                     self.agent.train(self.memory,update,self.discount)
                 state = new_state
                 index += 1
 
-                
-
+                stocks += self.stocks
             
+            
+            
+            
+            self.epoch[0] = i 
             print('\n',self.stocks, rewards)
             self.writer.add_scalar("Money",self.money,i)
-            self.writer.add_scalar("Stocks",self.stocks,i)
+            self.writer.add_scalar("Stocks",np.mean(stocks),i)
             self.writer.add_scalar("reward",rewards,i)
             self.writer.add_scalar("net_worth",self.money + close*self.stocks -self.start_money,i)
             self.writer.add_scalar("randomnes",self.epsilon,i)
-            self.epsilon = max(self.ep_min,self.epsilon*(1-i/self.episodes))
+            self.epsilon = max(self.ep_min,self.epsilon*(1-(i)/self.episodes) )
             
     
+
+    
+    def update_memory(self,parameters):
+        
+        for i in range(6):
+            
+            self.memory[i] = torch.cat((self.memory[i],parameters[i]))
+
+        if self.memory[0].size(0) > self.maxlen:
+            self.memory = [i[1:] for i in self.memory]
+
     def get_reward(self,action,price,value,sell):
         
         delta = self.stocks*(price - value)
@@ -132,7 +154,7 @@ class Environment():
 
         
                 
-        return (self.money - self.start_money + self.stocks*value - 10*delta),resell
+        return float(self.money - self.start_money + self.stocks*value - 10*delta),resell
 
 
 
@@ -143,4 +165,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     env = Environment(args)
+    env.re__init("E:/Stock/weights/model2.pth","E:/Stock/epoch/epoch.npy","E:/Stock/epoch/epsilon.npy")
     env.learn()

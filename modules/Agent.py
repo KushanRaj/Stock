@@ -103,26 +103,48 @@ class StockAgent():
         loss1.backward()
         self.optimizer.step()
         self.model.train(mode=False)
+
+    def load_model(self,path):
+
+        self.model.load_state_dict(torch.load(path))
+        self.target_model.load_state_dict(torch.load(path))
         
         
 
     def train(self,memory,update,discount):
         
-        minibatch = random.sample(memory, self.batch)
+        #minibatch = random.sample(memory, self.batch)
+        torch.cuda.empty_cache()
+        state,action,reward,new_state,sell,done = memory
+        
+        sample = torch.multinomial(torch.tensor([.1]).expand(done.size(0)),self.batch)
+        
+
+
+        #current_states = torch.stack([transition[0] for transition in minibatch])
+        current_qs_list,_ = self.model(state[sample].to(self.device))
 
         
-        current_states = torch.stack([transition[0] for transition in minibatch])
-        current_qs_list,_ = self.model(current_states.to(self.device))
+        #new_current_states = torch.stack([transition[3] for transition in minibatch])
+        future_qs_list,_ = self.target_model(new_state[sample].to(self.device))
+        
+        
+        
+        new_q = torch.zeros((self.batch,),device=self.device)
+        idx = torch.where(done[sample] != True)
+        idx2 = torch.where(done[sample])
+        max_future_q = torch.max(future_qs_list[idx],axis=1)[0]
+        
+        new_q[idx] = reward[idx].to(self.device) + discount * max_future_q
+        new_q[idx2] = reward[idx2].to(self.device)
+        current_qs_list[torch.arange(self.batch),action[sample].long()] = new_q
 
-        
-        new_current_states = torch.stack([transition[3] for transition in minibatch])
-        future_qs_list,_ = self.target_model(new_current_states.to(self.device))
-        
+        '''
+
         X = []
         y1 = []
         y2 = []
 
-        
         for index, (current_state, action, reward, new_current_state, sell,done) in enumerate(minibatch):
 
             
@@ -140,9 +162,9 @@ class StockAgent():
             X.append(current_state)
             y1.append(current_qs)
             y2.append(sell)
-            
+        '''   
         
-        self.train_step(torch.stack(X),torch.stack(y1),torch.stack(y2))
+        self.train_step(state[sample],current_qs_list,sell[sample])
 
         if update:
 

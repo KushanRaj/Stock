@@ -21,7 +21,7 @@ class Stocks(Dataset):
         self.IMG_SIZE = np.sqrt(self.data[0].size(0)).astype(int)
 
     def __getitem__(self,ind):
-        image = self.data[ind:ind+self.channel].view(self.channel,self.IMG_SIZE,self.IMG_SIZE)
+        image = self.data[ind:ind+self.channel].view(1,self.channel,self.IMG_SIZE,self.IMG_SIZE)
         price = self.data[ind+self.channel][1]
         close = self.data[ind+self.channel][0]
 
