@@ -1,7 +1,8 @@
-root : "E:/Stock/data/data.csv"
+root : "E:/Stock/data/test_aapl.csv"
+test: "E:/Stock/data/test.csv"
 database : "EOD/AAPL"
-channels : 8
-batch_size : 32
+time_line : 8
+batch_size : 64
 episodes : 10_000
 epsilon : 0.9
 discount : 0.99
